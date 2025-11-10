@@ -1,37 +1,99 @@
+import { GoogleGenAI, Type } from "@google/genai";
 
-import { GoogleGenAI } from "@google/genai";
+// Define the structure of the response we expect from the AI
+export interface Scene {
+  visual: string;
+  voiceover: string;
+  onScreenText: string;
+}
 
-export async function generateImage(prompt: string): Promise<string> {
-  // The API key is automatically sourced from the environment variable `process.env.API_KEY`
+export interface VideoScript {
+  platform: string;
+  title: string;
+  hook: string;
+  scenes: Scene[];
+}
+
+export async function generateVideoScripts(topic: string): Promise<VideoScript[]> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+  const prompt = `Based on the following topic, generate 3 engaging short-form video scripts, one each for TikTok, YouTube Shorts, and Instagram Reels.
+
+Topic: "${topic}"
+
+Provide a catchy title, a strong 3-second hook, and a sequence of scenes for each. For every scene, describe the visuals, the voiceover/dialogue, and any on-screen text. Ensure the scripts are tailored to the style of each platform.`;
+
   try {
-    const response = await ai.models.generateImages({
-      model: 'imagen-4.0-generate-001',
-      prompt: prompt,
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro', // Using a more powerful model for creative, structured output
+      contents: prompt,
       config: {
-        numberOfImages: 1,
-        outputMimeType: 'image/jpeg',
-        // The example image has a portrait orientation, 9:16 is a suitable aspect ratio.
-        aspectRatio: '9:16',
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          description: "A list of video scripts for different platforms.",
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              platform: {
+                type: Type.STRING,
+                description: "The target platform (e.g., 'TikTok', 'YouTube Short', 'Instagram Reel').",
+              },
+              title: {
+                type: Type.STRING,
+                description: "A catchy, viral-style title for the video.",
+              },
+              hook: {
+                type: Type.STRING,
+                description: "A strong opening hook to grab attention in the first 3 seconds.",
+              },
+              scenes: {
+                type: Type.ARRAY,
+                description: "A sequence of scenes that make up the video.",
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    visual: {
+                      type: Type.STRING,
+                      description: "A clear description of the visuals for this scene.",
+                    },
+                    voiceover: {
+                      type: Type.STRING,
+                      description: "The voiceover script or dialogue for this scene.",
+                    },
+                    onScreenText: {
+                      type: Type.STRING,
+                      description: "Any text overlay to display during this scene. Use 'N/A' if none.",
+                    },
+                  },
+                  required: ["visual", "voiceover", "onScreenText"],
+                },
+              },
+            },
+            required: ["platform", "title", "hook", "scenes"],
+          },
+        },
       },
     });
 
-    if (response.generatedImages && response.generatedImages.length > 0) {
-      const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
-      return base64ImageBytes;
-    } else {
-      // This case can happen if the response is blocked due to safety settings or other reasons.
-      throw new Error("No image was generated. The response may have been blocked or empty.");
+    const jsonText = response.text.trim();
+    if (!jsonText) {
+        throw new Error("Received an empty response from the AI. The content might have been blocked.");
     }
+
+    const scripts: VideoScript[] = JSON.parse(jsonText);
+    return scripts;
   } catch (error) {
-    console.error("Error generating image:", error);
+    console.error("Error generating video scripts:", error);
     if (error instanceof Error) {
         if (error.message.includes('SAFETY')) {
-            throw new Error("The prompt was blocked by safety settings. Please modify your prompt and try again.");
+            throw new Error("Your topic was blocked by safety settings. Please modify it and try again.");
         }
-        throw new Error(`Failed to generate image: ${error.message}`);
+        if (error.message.includes('JSON')) {
+             throw new Error("The AI returned an invalid format. Please try again.");
+        }
+        throw new Error(`Failed to generate scripts: ${error.message}`);
     }
-    throw new Error("An unknown error occurred during image generation.");
+    throw new Error("An unknown error occurred during script generation.");
   }
 }
