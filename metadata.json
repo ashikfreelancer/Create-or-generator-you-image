@@ -1,0 +1,5 @@
+{
+  "name": "AI Image Recreator",
+  "description": "Generate a unique image based on a textual description, inspired by an example. This tool uses AI to bring your creative visions to life.",
+  "requestFramePermissions": []
+}
